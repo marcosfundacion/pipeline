@@ -68,11 +68,11 @@ jobs:
           echo "export TF_LOG=debug" >> ~/.bashrc
           source ~/.bashrc
 
-    #   - name: Setup Terraform
-    #     uses: hashicorp/setup-terraform@v3
-    #     with:
-    #       terraform_version: '1.5.7'
-    #       terraform_wrapper: false
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.5.7'
+          terraform_wrapper: false
           
     #   - name: Terraform Init
     #     run: terraform init
