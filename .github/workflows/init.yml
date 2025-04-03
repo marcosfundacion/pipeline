@@ -107,12 +107,12 @@ jobs:
           retention-days: 5
         if: always()
              
-    #   - name: Upload Terraform files
-    #     uses: actions/upload-artifact@v4
-    #     with:
-    #       name: terraform-files
-    #       path: |
-    #         .
-    #         !environments/
-    #         !.git/
-    #       retention-days: 5
+      - name: Upload Terraform files
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-files
+        #   path: |
+        #     .
+        #     !environments/
+        #     !.git/
+          retention-days: 5
