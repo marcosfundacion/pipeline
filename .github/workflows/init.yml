@@ -1,116 +1,125 @@
-name: "Terraform Init Reusable Workflow"
+name: Prerequisites
 
 on:
   workflow_call:
     inputs:
-      aws_region:
-        description: 'AWS Region to deploy resources'
+      branch_name:
         required: true
         type: string
-      terraform_version:
-        description: 'Terraform version to use'
-        required: false
-        default: '1.5.7'
-        type: string
-      backend_s3_bucket:
-        description: 'S3 bucket for Terraform state'
-        required: true
-        type: string
-      backend_key_prefix:
-        description: 'Key prefix for Terraform state file'
-        required: true
-        type: string
+        description: 'Branch name for environment selection (prod, qa, dev, dr)'
     secrets:
-      OIDC_ROLE_ARN:
-        description: 'ARN of the OIDC IAM Role'
+      aws_region:
         required: true
-      TARGET_ROLE_ARN:
-        description: 'ARN of the Target IAM Role to assume'
+        description: 'AWS region for deployment'
+      aws_primary_role_arn:
         required: true
+        description: 'Primary OIDC role ARN to assume'
+      aws_target_role_arn:
+        required: true
+        description: 'Target role ARN to assume for deployments'
 
 permissions:
-  id-token: write
+  id-token: write # Required for OIDC authentication
   contents: read
 
 jobs:
-  terraform-init:
-    name: "Terraform Init"
+  prerequisites:
+    name: 'Prerequisites'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.aws_primary_role_arn }}
+          aws-region: ${{ secrets.aws_region }}
+          
+      - name: Assume Target Role
+        id: assume-role
+        run: |
+          # Assume the target role using AWS STS and store the credentials
+          creds=$(aws sts assume-role \
+            --role-arn ${{ secrets.aws_target_role_arn }} \
+            --role-session-name GitHubActionsSession \
+            --query "Credentials" \
+            --output json)
+            
+          # Set AWS credentials as environment variables for Terraform
+          echo "AWS_ACCESS_KEY_ID=$(echo $creds | jq -r .AccessKeyId)" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$(echo $creds | jq -r .SecretAccessKey)" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=$(echo $creds | jq -r .SessionToken)" >> $GITHUB_ENV
+          
+          # Verify role assumption worked
+          aws sts get-caller-identity
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: ${{ inputs.terraform_version }}
+          terraform_version: '1.5.7'
+          terraform_wrapper: false
 
-      - name: Configure AWS Credentials with OIDC
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}
-          aws-region: ${{ inputs.aws_region }}
-
-      - name: Assume Target Role
-        run: |
-          # Assume the target role and store credentials
-          CREDS=$(aws sts assume-role --role-arn ${{ secrets.TARGET_ROLE_ARN }} --role-session-name terraform-deployment)
-          
-          # Export the credentials for use in subsequent steps
-          echo "AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r '.Credentials.AccessKeyId')" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r '.Credentials.SecretAccessKey')" >> $GITHUB_ENV
-          echo "AWS_SESSION_TOKEN=$(echo $CREDS | jq -r '.Credentials.SessionToken')" >> $GITHUB_ENV
-
-      - name: Update Terraform Variables
-        shell: bash
+      - name: Terraform Init
+        run: terraform init
+        
+      - name: Update terraform vars
         run: |
           pwd
           echo "See files"
           ls -a
-          
-          if [[ ${{ github.ref_name }} = "prod" ]]
-          then
-              echo "Using prod variables"
-              cp environments/prod/terraform.tfvars terraform.tfvars
-          elif [[ ${{ github.ref_name }} = "qa" ]]
-          then
-              echo "Using QA variables"
-              cp environments/qa/terraform.tfvars terraform.tfvars
-          elif [[ ${{ github.ref_name }} = "dev" ]]
-          then
-              echo "Using DEV variables"
-              cp environments/dev/terraform.tfvars terraform.tfvars
-          elif [[ ${{ github.ref_name }} = "dr" ]]
-          then
-              echo "Using DR variables"
-              cp environments/dr/terraform.tfvars terraform.tfvars
+          if [[ "${{ inputs.branch_name }}" == "prod" ]]; then
+            echo "Using prod variables"
+            cp ./environments/prod/terraform.tfvars terraform.tfvars
+          elif [[ "${{ inputs.branch_name }}" == "qa" ]]; then
+            echo "Using QA variables"
+            cp ./environments/qa/terraform.tfvars terraform.tfvars
+          elif [[ "${{ inputs.branch_name }}" == "dev" ]]; then
+            echo "Using DEV variables"
+            cp ./environments/dev/terraform.tfvars terraform.tfvars
+          elif [[ "${{ inputs.branch_name }}" == "dr" ]]; then
+            echo "Using DR variables"
+            cp ./environments/dr/terraform.tfvars terraform.tfvars
           fi
-
-      - name: Configure Terraform Backend
-        run: |
-          cat > backend.tf << EOL
-          terraform {
-            backend "s3" {
-              bucket         = "${{ inputs.backend_s3_bucket }}"
-              key            = "${{ inputs.backend_key_prefix }}/${{ github.ref_name }}.tfstate"
-              region         = "${{ inputs.aws_region }}"
-              encrypt        = true
-            }
-          }
-          EOL
-
-      - name: Terraform Init
-        id: init
-        run: terraform init
-
-      - name: Create Artifact
-        run: |
-          # Create zip file with relevant Terraform files, excluding unnecessary directories
-          zip -r terraform_artifact.zip . -x "environments/*" -x ".git/*" -x ".github/*"
-
-      - name: Upload Terraform Artifact
-        uses: actions/upload-artifact@v3
+          zip -r terraform_artifact.zip . -x "environments/*" -x ".git/*"
+          
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v4
         with:
-          name: terraform-artifacts
-          path: terraform_artifact.zip
+          python-version: '3.9'
+          
+      - name: Install checkov
+        run: pip3 install checkov
+        
+      - name: Create checkov report folder
+        run: mkdir checkov_report
+        
+      - name: Run checkov
+        run: |
+          export TF_REGISTRY_TOKEN="${{ secrets.tf_token }}"
+          checkov -o junitxml --framework terraform --skip-check CKV_AWS_LOW --download-external-modules true -d ./ -s > ./checkov_report/checkov.xml
+          checkov -o json --framework terraform --download-external-modules true --skip-check CKV_AWS_LOW -d ./ -s
+        
+      - name: Upload Checkov Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov_report
+          path: checkov_report
+          retention-days: 5
+        if: always()
+        
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: "**/checkov.xml"
+        if: always()
+        
+      - name: Upload Terraform files
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-files
+          path: |
+            .
+            !environments/
+            !.git/
           retention-days: 5
