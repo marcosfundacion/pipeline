@@ -96,7 +96,6 @@ jobs:
         
       - name: Run checkov
         run: |
-          export TF_REGISTRY_TOKEN="${{ secrets.tf_token }}"
           checkov -o junitxml --framework terraform --skip-check CKV_AWS_LOW --download-external-modules true -d ./ -s > ./checkov_report/checkov.xml
           checkov -o json --framework terraform --download-external-modules true --skip-check CKV_AWS_LOW -d ./ -s
         
@@ -107,13 +106,7 @@ jobs:
           path: checkov_report
           retention-days: 5
         if: always()
-        
-      - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        with:
-          files: "**/checkov.xml"
-        if: always()
-        
+             
       - name: Upload Terraform files
         uses: actions/upload-artifact@v4
         with:
