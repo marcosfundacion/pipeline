@@ -53,16 +53,16 @@ jobs:
     
     steps:
       - name: Checkout del código
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Configurar AWS Credentials con rol principal
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ inputs.principal-role-arn }}
           aws-region: ${{ inputs.region }}
       
       - name: Asumir rol en cuenta de destino
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ inputs.target-role-arn }}
           aws-region: ${{ inputs.region }}
@@ -145,7 +145,7 @@ jobs:
       
       # Guardar el estado del workspace como artefacto para ser usado por otros workflows
       - name: Guardar artefactos de Terraform
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: terraform-artifacts
           path: |
