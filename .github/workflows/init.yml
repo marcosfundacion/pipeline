@@ -1,166 +1,116 @@
-name: Initialización Terraform y Checkmarx
+name: "Terraform Init Reusable Workflow"
 
-# Define este workflow como reutilizable
 on:
   workflow_call:
     inputs:
-      principal-role-arn:
-        type: string
+      aws_region:
+        description: 'AWS Region to deploy resources'
         required: true
-        description: 'ARN del rol principal de AWS para autenticación OIDC'
-      target-role-arn:
         type: string
-        required: true
-        description: 'ARN del rol de destino en la cuenta específica del entorno'
-      branch-name:
-        type: string
-        required: true
-        description: 'Nombre de la rama'
-      environment:
-        type: string
-        required: true
-        description: 'Entorno de despliegue (dev, qa, prod, dr)'
-      region:
-        type: string
+      terraform_version:
+        description: 'Terraform version to use'
         required: false
-        default: 'us-east-1'
-        description: 'Región de AWS'
-      tf-backend-bucket:
+        default: '1.5.7'
         type: string
+      backend_s3_bucket:
+        description: 'S3 bucket for Terraform state'
         required: true
-        description: 'Bucket S3 para el backend de Terraform'
-      tf-backend-key:
         type: string
+      backend_key_prefix:
+        description: 'Key prefix for Terraform state file'
         required: true
-        description: 'Key para el backend de Terraform'
+        type: string
     secrets:
-      CX_API_KEY:
+      OIDC_ROLE_ARN:
+        description: 'ARN of the OIDC IAM Role'
         required: true
-        description: 'API Key para Checkmarx'
-      CX_TENANT:
+      TARGET_ROLE_ARN:
+        description: 'ARN of the Target IAM Role to assume'
         required: true
-        description: 'Tenant para Checkmarx'
 
-# Permisos que necesita el workflow
 permissions:
-  id-token: write   # Necesario para la autenticación OIDC con AWS
-  contents: read    # Para leer el repositorio
+  id-token: write
+  contents: read
 
 jobs:
-  init:
+  terraform-init:
+    name: "Terraform Init"
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
-    
     steps:
-      - name: Checkout del código
-        uses: actions/checkout@v4
-      
-      - name: Configurar AWS Credentials con rol principal
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
         with:
-          role-to-assume: ${{ inputs.principal-role-arn }}
-          aws-region: ${{ inputs.region }}
-      
-      - name: Assume Role in Target Account
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Configure AWS Credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Assume Target Role
+        run: |
+          # Assume the target role and store credentials
+          CREDS=$(aws sts assume-role --role-arn ${{ secrets.TARGET_ROLE_ARN }} --role-session-name terraform-deployment)
+          
+          # Export the credentials for use in subsequent steps
+          echo "AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r '.Credentials.AccessKeyId')" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r '.Credentials.SecretAccessKey')" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=$(echo $CREDS | jq -r '.Credentials.SessionToken')" >> $GITHUB_ENV
+
+      - name: Update Terraform Variables
         shell: bash
-        run: |
-          echo "Asumiendo rol en cuenta destino: ${{ inputs.target-role-arn }}"
-          
-          # Asumir el rol en la cuenta destino
-          CREDENTIALS=$(aws sts assume-role --role-arn ${{ inputs.target-role-arn }} \
-            --role-session-name GitHubActions-${{ github.run_id }} --duration-seconds 900)
-          
-          # Exportar credenciales temporales
-          echo "AWS_ACCESS_KEY_ID=$(echo $CREDENTIALS | jq -r '.Credentials.AccessKeyId')" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=$(echo $CREDENTIALS | jq -r '.Credentials.SecretAccessKey')" >> $GITHUB_ENV
-          echo "AWS_SESSION_TOKEN=$(echo $CREDENTIALS | jq -r '.Credentials.SessionToken')" >> $GITHUB_ENV
-          
-          echo "Rol asumido correctamente"
-      
-      - name: Instalar Terraform
-        run: |
-          echo "Installing Terraform..."
-          TERRAFORM_VERSION=$(curl -s https://checkpoint-api.hashicorp.com/v1/check/terraform | jq -r .current_version)
-          curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
-          unzip terraform_*_linux_amd64.zip
-          sudo mv terraform /usr/local/bin/
-          terraform --version
-      
-      - name: Instalar jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-      
-      - name: Instalar Checkmarx AST CLI
-        run: |
-          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          brew install checkmarx/ast-cli/ast-cli
-      
-      # No necesitamos configurar credenciales de Git ya que estamos en GitHub Actions
-      # GitHub Actions proporciona acceso automático al repositorio
-      
-      - name: Configurar backend de Terraform
-        run: |
-          echo "Configuring Terraform backend..."
-          echo "bucket = \"${{ inputs.tf-backend-bucket }}\"" > backend.hcl
-          echo "key = \"${{ inputs.tf-backend-key }}\"" >> backend.hcl
-          echo "encrypt = true" >> backend.hcl
-          
-      - name: Actualizar variables de Terraform según entorno
         run: |
           pwd
           echo "See files"
           ls -a
-          if [[ "${{ inputs.branch-name }}" == "prod" || "${{ inputs.environment }}" == "prod" ]]
+          
+          if [[ ${{ github.ref_name }} = "prod" ]]
           then
               echo "Using prod variables"
-              cp ./environments/prod/terraform.tfvars terraform.tfvars
-          elif [[ "${{ inputs.branch-name }}" == "qa" || "${{ inputs.environment }}" == "qa" ]]
+              cp environments/prod/terraform.tfvars terraform.tfvars
+          elif [[ ${{ github.ref_name }} = "qa" ]]
           then
               echo "Using QA variables"
-              cp ./environments/qa/terraform.tfvars terraform.tfvars
-          elif [[ "${{ inputs.branch-name }}" == "dev" || "${{ inputs.environment }}" == "dev" ]]
+              cp environments/qa/terraform.tfvars terraform.tfvars
+          elif [[ ${{ github.ref_name }} = "dev" ]]
           then
               echo "Using DEV variables"
-              cp ./environments/dev/terraform.tfvars terraform.tfvars
-          elif [[ "${{ inputs.branch-name }}" == "dr" || "${{ inputs.environment }}" == "dr" ]]
+              cp environments/dev/terraform.tfvars terraform.tfvars
+          elif [[ ${{ github.ref_name }} = "dr" ]]
           then
               echo "Using DR variables"
-              cp ./environments/dr/terraform.tfvars terraform.tfvars
-          else
-              echo "No environment match found, using default variables if available"
-              if [ -f "./environments/default/terraform.tfvars" ]; then
-                  cp ./environments/default/terraform.tfvars terraform.tfvars
-              fi
+              cp environments/dr/terraform.tfvars terraform.tfvars
           fi
-          
-      - name: Crear archivo zip con artefactos
+
+      - name: Configure Terraform Backend
         run: |
-          zip -r terraform_artifact.zip . -x "environments/*" -x ".git/*"
-      
-      - name: Inicializar Terraform
-        run: terraform init -backend-config=backend.hcl
-      
-      - name: Ejecutar escaneo de Checkmarx
+          cat > backend.tf << EOL
+          terraform {
+            backend "s3" {
+              bucket         = "${{ inputs.backend_s3_bucket }}"
+              key            = "${{ inputs.backend_key_prefix }}/${{ github.ref_name }}.tfstate"
+              region         = "${{ inputs.aws_region }}"
+              encrypt        = true
+            }
+          }
+          EOL
+
+      - name: Terraform Init
+        id: init
+        run: terraform init
+
+      - name: Create Artifact
         run: |
-          cx configure set --prop-name "cx_apikey" --prop-value "${{ secrets.CX_API_KEY }}"
-          cx scan create --project-name "${{ github.repository }}" \
-            --file-source "." \
-            --branch "${{ inputs.environment }}" \
-            --scan-types iac-security \
-            --scan-info-format 'json' \
-            --agent 'GitHub' \
-            --base-uri "https://us.ast.checkmarx.net" \
-            --tenant "${{ secrets.CX_TENANT }}"
-      
-      # Guardar el estado del workspace como artefacto para ser usado por otros workflows
-      - name: Guardar artefactos de Terraform
-        uses: actions/upload-artifact@v4
+          # Create zip file with relevant Terraform files, excluding unnecessary directories
+          zip -r terraform_artifact.zip . -x "environments/*" -x ".git/*" -x ".github/*"
+
+      - name: Upload Terraform Artifact
+        uses: actions/upload-artifact@v3
         with:
           name: terraform-artifacts
-          path: |
-            .terraform/**
-            .terraform.lock.hcl
-            backend.hcl
-            terraform.tfvars
-            terraform_artifact.zip
-          retention-days: 1
+          path: terraform_artifact.zip
+          retention-days: 5
