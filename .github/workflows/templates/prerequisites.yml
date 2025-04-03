@@ -1,0 +1,75 @@
+name: Prerequisites
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+
+    - name: Terraform Init
+      shell: bash
+      run: terraform init
+
+    - name: Update Terraform Variables
+      shell: bash
+      run: |
+        pwd
+        echo "See files"
+        ls -a
+        if [[ ${{ github.ref_name }} = "prod" ]]
+        then
+            echo "Using prod variables"
+            cp ./environments/prod/terraform.tfvars terraform.tfvars
+        elif [[ ${{ github.ref_name }} = "qa" ]]
+        then
+            echo "Using QA variables"
+            cp ./environments/qa/terraform.tfvars terraform.tfvars
+        elif [[ ${{ github.ref_name }} = "dev" ]]
+        then
+            echo "Using DEV variables"
+            cp ./environments/dev/terraform.tfvars terraform.tfvars
+        elif [[ ${{ github.ref_name }} = "dr" ]]
+        then
+            echo "Using DR variables"
+            cp ./environments/dr/terraform.tfvars terraform.tfvars
+        fi
+        zip -r terraform_artifact.zip . -x "environments/*" -x ".git/*" -x ".github/*"
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install Checkov
+      shell: bash
+      run: pip3 install checkov
+
+    - name: Create Checkov Report Folder
+      shell: bash
+      run: mkdir checkov_report
+
+    - name: Run Checkov
+      shell: bash
+      run: |
+        checkov -o junitxml --framework terraform --skip-check CKV_AWS_LOW --download-external-modules true -d ./ -s > ./checkov_report/checkov.xml
+        checkov -o json --framework terraform --download-external-modules true --skip-check CKV_AWS_LOW -d ./ -s
+
+    - name: Upload Checkov Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: checkov_report
+        path: checkov_report
+        if-no-files-found: warn
+
+    - name: Publish Test Results
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      if: always()
+      with:
+        files: "**/checkov.xml"
+
+    - name: Upload Terraform Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: Tfvars
+        path: .
+        if-no-files-found: warn

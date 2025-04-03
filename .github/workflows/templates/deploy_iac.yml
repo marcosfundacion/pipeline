@@ -1,0 +1,54 @@
+name: Deploy IAC
+
+runs:
+  using: "composite"
+  steps:
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.principal-role-arn }}
+        aws-region: us-east-1
+        role-session-name: GitHubActions-${{ github.run_id }}
+        role-chaining: true
+        role-skip-session-tagging: true
+        
+    - name: Assume Role in Target Account
+      shell: bash
+      run: |
+        echo "Asumiendo rol en cuenta destino: ${{ inputs.target-role-arn }}"
+        
+        # Asumir el rol en la cuenta destino
+        CREDENTIALS=$(aws sts assume-role --role-arn ${{ inputs.target-role-arn }} \
+          --role-session-name GitHubActions-${{ github.run_id }} --duration-seconds 900)
+        
+        # Exportar credenciales temporales
+        echo "AWS_ACCESS_KEY_ID=$(echo $CREDENTIALS | jq -r '.Credentials.AccessKeyId')" >> $GITHUB_ENV
+        echo "AWS_SECRET_ACCESS_KEY=$(echo $CREDENTIALS | jq -r '.Credentials.SecretAccessKey')" >> $GITHUB_ENV
+        echo "AWS_SESSION_TOKEN=$(echo $CREDENTIALS | jq -r '.Credentials.SessionToken')" >> $GITHUB_ENV
+        
+        echo "Rol asumido correctamente"
+
+    - name: Download Terraform Artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: Tfvars
+        path: ${{ github.workspace }}/artifacts
+
+    - name: Extract Terraform Files
+      shell: bash
+      run: |
+        pwd
+        ls -a ${{ github.workspace }}/artifacts
+        echo "Copy Terraform artifact"
+        cp -f ${{ github.workspace }}/artifacts/*.zip .
+        echo "After Copy"
+        unzip -o terraform_artifact.zip
+        echo "see files"
+        ls -a
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+
+    - name: Terraform Apply
+      shell: bash
+      run: terraform apply -auto-approve
