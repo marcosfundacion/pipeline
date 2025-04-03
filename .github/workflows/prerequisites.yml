@@ -62,20 +62,22 @@ jobs:
           checkov -o json --framework terraform --download-external-modules true --skip-check CKV_AWS_LOW -d ./ -s
 
       - name: Upload Checkov Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2
         with:
           name: checkov_report
           path: checkov_report
           if-no-files-found: warn
 
       - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+        uses: dorny/test-reporter@v1
         if: always()
         with:
-          files: "**/checkov.xml"
+          name: Checkov Test Results
+          path: "**/checkov.xml"
+          reporter: java-junit
 
       - name: Upload Terraform Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2
         with:
           name: Tfvars
           path: .
