@@ -1,4 +1,12 @@
-name: Deploy IAC
+name: 'Plan IAC'
+description: 'Ejecuta el plan de Terraform para IAC'
+inputs:
+  principal-role-arn:
+    description: 'ARN del rol principal de AWS para autenticación OIDC'
+    required: true
+  target-role-arn:
+    description: 'ARN del rol de destino en la cuenta específica del entorno'
+    required: true
 
 runs:
   using: "composite"
@@ -49,6 +57,11 @@ runs:
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
 
-    - name: Terraform Apply
+    - name: Configure Terraform Logs
       shell: bash
-      run: terraform apply -auto-approve
+      run: |
+        echo "export TF_LOG=debug" >> ~/.bashrc
+
+    - name: Terraform Plan
+      shell: bash
+      run: terraform plan

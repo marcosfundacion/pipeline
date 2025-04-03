@@ -1,4 +1,12 @@
-name: Prerequisites
+name: 'Prerequisites'
+description: 'Ejecuta los pasos de prerrequisitos para el despliegue de IAC'
+inputs:
+  principal-role-arn:
+    description: 'ARN del rol principal de AWS para autenticación OIDC'
+    required: true
+  target-role-arn:
+    description: 'ARN del rol de destino en la cuenta específica del entorno'
+    required: true
 
 runs:
   using: "composite"
