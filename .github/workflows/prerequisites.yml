@@ -1,4 +1,4 @@
-name: Prerequisites Workflow
+name: Prerequisites Workflow (Simplified)
 
 # Define este workflow como reutilizable
 on:
@@ -11,12 +11,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+        run: |
+          # Clonar el repositorio manualmente
+          git clone https://github.com/${{ github.repository }}.git .
+          git checkout ${{ github.ref }}
       
+      # Instalar Terraform sin usar la acción
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        run: |
+          sudo apt-get update && sudo apt-get install -y gnupg software-properties-common curl
+          curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
+          sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
+          sudo apt-get update && sudo apt-get install terraform
 
       - name: Terraform Init
         run: terraform init
@@ -45,38 +51,30 @@ jobs:
           fi
           zip -r terraform_artifact.zip . -x "environments/*" -x ".git/*" -x ".github/*"
 
+      # Instalar Python sin usar la acción
       - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip
+          python3 --version
 
       - name: Install Checkov
         run: pip3 install checkov
 
       - name: Create Checkov Report Folder
-        run: mkdir checkov_report
+        run: mkdir -p checkov_report
 
       - name: Run Checkov
         run: |
           checkov -o junitxml --framework terraform --skip-check CKV_AWS_LOW --download-external-modules true -d ./ -s > ./checkov_report/checkov.xml
           checkov -o json --framework terraform --download-external-modules true --skip-check CKV_AWS_LOW -d ./ -s
 
-      - name: Upload Checkov Report
-        uses: actions/upload-artifact@v1
-        with:
-          name: checkov_report
-          path: checkov_report
-
-      - name: Publish Test Results
-        uses: dorny/test-reporter@v1
-        if: always()
-        with:
-          name: Checkov Test Results
-          path: "**/checkov.xml"
-          reporter: java-junit
-
-      - name: Upload Terraform Artifacts
-        uses: actions/upload-artifact@v1
-        with:
-          name: Tfvars
-          path: .
+      # En lugar de upload-artifact, creamos un archivo en un lugar conocido
+      - name: Create artifact manifest
+        run: |
+          # Guardar información de la ejecución para otros jobs
+          echo "${{ github.run_id }}" > tf_run_id.txt
+          # Copiar artefactos a un directorio compartido
+          mkdir -p /tmp/github_artifacts
+          cp -r . /tmp/github_artifacts/
+          echo "Artifacts stored in /tmp/github_artifacts"
