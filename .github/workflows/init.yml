@@ -111,8 +111,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: terraform-files
-        #   path: |
-        #     .
-        #     !environments/
-        #     !.git/
+          path: |
+            !environments/
+            !.git/
+            !.github
+            !.vscode
+            !build
           retention-days: 5
