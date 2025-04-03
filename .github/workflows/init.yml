@@ -1,0 +1,157 @@
+name: Initialización Terraform y Checkmarx
+
+# Define este workflow como reutilizable
+on:
+  workflow_call:
+    inputs:
+      principal-role-arn:
+        type: string
+        required: true
+        description: 'ARN del rol principal de AWS para autenticación OIDC'
+      target-role-arn:
+        type: string
+        required: true
+        description: 'ARN del rol de destino en la cuenta específica del entorno'
+      branch-name:
+        type: string
+        required: true
+        description: 'Nombre de la rama'
+      environment:
+        type: string
+        required: true
+        description: 'Entorno de despliegue (dev, qa, prod, dr)'
+      region:
+        type: string
+        required: false
+        default: 'us-east-1'
+        description: 'Región de AWS'
+      tf-backend-bucket:
+        type: string
+        required: true
+        description: 'Bucket S3 para el backend de Terraform'
+      tf-backend-key:
+        type: string
+        required: true
+        description: 'Key para el backend de Terraform'
+    secrets:
+      CX_API_KEY:
+        required: true
+        description: 'API Key para Checkmarx'
+      CX_TENANT:
+        required: true
+        description: 'Tenant para Checkmarx'
+
+# Permisos que necesita el workflow
+permissions:
+  id-token: write   # Necesario para la autenticación OIDC con AWS
+  contents: read    # Para leer el repositorio
+
+jobs:
+  init:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v3
+      
+      - name: Configurar AWS Credentials con rol principal
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ inputs.principal-role-arn }}
+          aws-region: ${{ inputs.region }}
+      
+      - name: Asumir rol en cuenta de destino
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ inputs.target-role-arn }}
+          aws-region: ${{ inputs.region }}
+          role-session-name: GitHubActionsSession
+      
+      - name: Instalar Terraform
+        run: |
+          echo "Installing Terraform..."
+          TERRAFORM_VERSION=$(curl -s https://checkpoint-api.hashicorp.com/v1/check/terraform | jq -r .current_version)
+          curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+          unzip terraform_*_linux_amd64.zip
+          sudo mv terraform /usr/local/bin/
+          terraform --version
+      
+      - name: Instalar jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      
+      - name: Instalar Checkmarx AST CLI
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          brew install checkmarx/ast-cli/ast-cli
+      
+      # No necesitamos configurar credenciales de Git ya que estamos en GitHub Actions
+      # GitHub Actions proporciona acceso automático al repositorio
+      
+      - name: Configurar backend de Terraform
+        run: |
+          echo "Configuring Terraform backend..."
+          echo "bucket = \"${{ inputs.tf-backend-bucket }}\"" > backend.hcl
+          echo "key = \"${{ inputs.tf-backend-key }}\"" >> backend.hcl
+          echo "encrypt = true" >> backend.hcl
+          
+      - name: Actualizar variables de Terraform según entorno
+        run: |
+          pwd
+          echo "See files"
+          ls -a
+          if [[ "${{ inputs.branch-name }}" == "prod" || "${{ inputs.environment }}" == "prod" ]]
+          then
+              echo "Using prod variables"
+              cp ./environments/prod/terraform.tfvars terraform.tfvars
+          elif [[ "${{ inputs.branch-name }}" == "qa" || "${{ inputs.environment }}" == "qa" ]]
+          then
+              echo "Using QA variables"
+              cp ./environments/qa/terraform.tfvars terraform.tfvars
+          elif [[ "${{ inputs.branch-name }}" == "dev" || "${{ inputs.environment }}" == "dev" ]]
+          then
+              echo "Using DEV variables"
+              cp ./environments/dev/terraform.tfvars terraform.tfvars
+          elif [[ "${{ inputs.branch-name }}" == "dr" || "${{ inputs.environment }}" == "dr" ]]
+          then
+              echo "Using DR variables"
+              cp ./environments/dr/terraform.tfvars terraform.tfvars
+          else
+              echo "No environment match found, using default variables if available"
+              if [ -f "./environments/default/terraform.tfvars" ]; then
+                  cp ./environments/default/terraform.tfvars terraform.tfvars
+              fi
+          fi
+          
+      - name: Crear archivo zip con artefactos
+        run: |
+          zip -r terraform_artifact.zip . -x "environments/*" -x ".git/*"
+      
+      - name: Inicializar Terraform
+        run: terraform init -backend-config=backend.hcl
+      
+      - name: Ejecutar escaneo de Checkmarx
+        run: |
+          cx configure set --prop-name "cx_apikey" --prop-value "${{ secrets.CX_API_KEY }}"
+          cx scan create --project-name "${{ github.repository }}" \
+            --file-source "." \
+            --branch "${{ inputs.environment }}" \
+            --scan-types iac-security \
+            --scan-info-format 'json' \
+            --agent 'GitHub' \
+            --base-uri "https://us.ast.checkmarx.net" \
+            --tenant "${{ secrets.CX_TENANT }}"
+      
+      # Guardar el estado del workspace como artefacto para ser usado por otros workflows
+      - name: Guardar artefactos de Terraform
+        uses: actions/upload-artifact@v3
+        with:
+          name: terraform-artifacts
+          path: |
+            .terraform/**
+            .terraform.lock.hcl
+            backend.hcl
+            terraform.tfvars
+            terraform_artifact.zip
+          retention-days: 1
