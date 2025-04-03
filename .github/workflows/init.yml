@@ -137,7 +137,7 @@ jobs:
           name: terraform-files
           path: |
             .
-            .terraform/
+            .terraform/**
             !environments/
             !.git/
             !terraform_artifact.zip
