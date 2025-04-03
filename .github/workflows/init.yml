@@ -112,9 +112,9 @@ jobs:
         with:
           name: terraform-files
           path: |
+            .
+            .terraform/
             !environments/
             !.git/
-            !.github
-            !.vscode
-            !build
+            !terraform_artifact.zip
           retention-days: 5
