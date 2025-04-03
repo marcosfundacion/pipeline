@@ -60,13 +60,7 @@ jobs:
         with:
           role-to-assume: ${{ inputs.principal-role-arn }}
           aws-region: ${{ inputs.region }}
-      
-      - name: Asumir rol en cuenta de destino
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ inputs.target-role-arn }}
-          aws-region: ${{ inputs.region }}
-          role-session-name: GitHubActionsSession
+    
       
       - name: Instalar Terraform
         run: |
