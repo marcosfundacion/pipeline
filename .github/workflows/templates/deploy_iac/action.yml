@@ -1,5 +1,5 @@
-name: 'Plan IAC'
-description: 'Ejecuta el plan de Terraform para IAC'
+name: 'Deploy IAC'
+description: 'Ejecuta el despliegue de Terraform para IAC'
 inputs:
   principal-role-arn:
     description: 'ARN del rol principal de AWS para autenticación OIDC'
@@ -62,6 +62,6 @@ runs:
       run: |
         echo "export TF_LOG=debug" >> ~/.bashrc
 
-    - name: Terraform Plan
+    - name: Terraform Apply
       shell: bash
-      run: terraform plan
+      run: terraform apply -auto-approve

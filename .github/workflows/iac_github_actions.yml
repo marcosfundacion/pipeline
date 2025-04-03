@@ -30,7 +30,7 @@ jobs:
       
       # Corregido: Ruta correcta al template de prerequisites
       - name: Run Prerequisites
-        uses: ./.github/workflows/templates/prerequisites
+        uses: ./.github/workflows/templates/prerequisites/
         # Si el template está en otro repositorio:
         # uses: organization-name/ban-repo-lowcode-2160-bpm-iac_github_actions/.github/workflows/templates/prerequisites@main
 
@@ -44,7 +44,7 @@ jobs:
       
       # Corregido: Ruta correcta al template de plan_iac
       - name: Plan IAC
-        uses: ./.github/workflows/templates/plan_iac
+        uses: ./.github/workflows/templates/plan_iac/
         # Si el template está en otro repositorio:
         # uses: organization-name/ban-repo-lowcode-2160-bpm-iac_github_actions/.github/workflows/templates/plan_iac@main
 
@@ -60,6 +60,6 @@ jobs:
       
       # Corregido: Ruta correcta al template de deploy_iac
       - name: Deploy IAC
-        uses: ./.github/workflows/templates/deploy_iac
+        uses: ./.github/workflows/templates/deploy_iac/
         # Si el template está en otro repositorio:
         # uses: organization-name/ban-repo-lowcode-2160-bpm-iac_github_actions/.github/workflows/templates/deploy_iac@main
