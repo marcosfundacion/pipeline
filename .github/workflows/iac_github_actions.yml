@@ -25,6 +25,13 @@ jobs:
     name: 'Prerequisites (CI)'
     runs-on: ubuntu-latest
     steps:
+      - name: Debug filesystem
+        run: |
+          pwd
+          ls -la
+          ls -la .github/
+          ls -la .github/workflows/
+          ls -la .github/workflows/templates/ || echo "templates directory doesn't exist"
       - name: Checkout repository
         uses: actions/checkout@v3
       
