@@ -7,6 +7,18 @@ on:
         required: true
         type: string
         description: 'Branch name for environment selection (prod, qa, dev, dr)'
+      tf_backend_bucket:
+        required: true
+        type: string
+        description: 'S3 bucket for Terraform state'
+      tf_backend_key:
+        required: true
+        type: string
+        description: 'S3 key for Terraform state'
+      tf_backend_dynamodb_table:
+        required: true
+        type: string
+        description: 'DynamoDB table for Terraform state locking'
     secrets:
       aws_region:
         required: true
@@ -60,8 +72,20 @@ jobs:
           terraform_version: '1.5.7'
           terraform_wrapper: false
 
-      - name: Terraform Init
-        run: terraform init
+      - name: Configure Terraform Backend
+        run: |
+          echo "Configuring Terraform backend..."
+          echo "bucket = \"${{ inputs.tf_backend_bucket }}\"" > backend.hcl
+          echo "key = \"${{ inputs.tf_backend_key }}\"" >> backend.hcl
+          echo "dynamodb_table = \"${{ inputs.tf_backend_dynamodb_table }}\"" >> backend.hcl
+          echo "encrypt = true" >> backend.hcl
+          
+          cat backend.hcl
+
+      - name: Terraform Init with Backend Config
+        run: |
+          echo "Initializing Terraform..."
+          terraform init -backend-config=backend.hcl
         
       - name: Update terraform vars
         run: |
@@ -117,4 +141,5 @@ jobs:
             !environments/
             !.git/
             !terraform_artifact.zip
+            !build
           retention-days: 5
