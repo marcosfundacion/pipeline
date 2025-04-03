@@ -140,6 +140,5 @@ jobs:
             .terraform/**
             !environments/
             !.git/
-            !terraform_artifact.zip
             !build
           retention-days: 5
