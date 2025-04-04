@@ -81,7 +81,7 @@ jobs:
         run: terraform plan -out=tfplan
 
       - name: Empaquetar terraform plan
-        run: zip -r terraform_plan.zip . -x "artifact-files/*" -x "terraform_artifact" -x "./terraform/*"
+        run: zip -r terraform_plan.zip . -x "artifact-files/*" -x "terraform_artifact.*" -x ".terraform/*"
         
       - name: Upload Terraform Plan
         uses: actions/upload-artifact@v4
