@@ -19,7 +19,7 @@ on:
         description: "Cuerpo del issue de aprobación"
     secrets:
       approvers:
-        required: false
+        required: true
         description: "Lista de aprobadores separados por comas (usuario1,usuario2)"
 
 permissions:
@@ -30,9 +30,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Manual Approval
-        uses: trstringer/manual-approval@v1.9.0
+        uses: trstringer/manual-approval@v1
         with:
-          secret: ${{ secrets.GITHUB_TOKEN }}
+          secret: ${{ github.TOKEN }}
           approvers: ${{ secrets.approvers }}
           minimum-approvals: 1
           issue-title: "${{ inputs.issue_title }} - ${{ inputs.environment_name }}"
