@@ -105,7 +105,7 @@ jobs:
             echo "Using DR variables"
             cp ./environments/dr/terraform.tfvars terraform.tfvars
           fi
-          zip -r terraform_artifact.zip . -x "environments/*" -x ".git/*"
+          zip -r terraform_artifact.zip . -x "environments/*" -x ".git/*" -x "build/*"
           
       - name: Set up Python 3.9
         uses: actions/setup-python@v4
@@ -136,8 +136,7 @@ jobs:
         with:
           name: terraform-files
           path: |
-            .
-            .terraform/**
+            terraform_artifact.*
             !environments/
             !.git/
             !build
