@@ -74,8 +74,8 @@ jobs:
           terraform_version: '1.5.7'
           terraform_wrapper: false
           
-    #   - name: Terraform Init
-    #     run: terraform init
+      - name: Terraform Init
+        run: terraform init -backend-config=backend.hcl
         
       - name: Terraform Plan
         run: terraform plan -out=tfplan
@@ -84,5 +84,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan
-          path: tfplan
+          path: |
+            .
+            tplan
+            !.terraform/*
           retention-days: 5
