@@ -79,13 +79,17 @@ jobs:
         
       - name: Terraform Plan
         run: terraform plan -out=tfplan
+
+      - name: Empaquetar terraform plan
+        run: zip -r terraform_plan.zip . -x "artifact-files/*" -x "terraform_artifact" -x "./terraform/*"
         
       - name: Upload Terraform Plan
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan
           path: |
-            .
-            tplan
+            terraform_plan.*
             !.terraform/*
+            !artifact-files/*
+            !terraform_artifact
           retention-days: 5
