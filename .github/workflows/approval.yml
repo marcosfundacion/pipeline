@@ -19,7 +19,7 @@ on:
         description: "Cuerpo del issue de aprobación"
     secrets:
       approvers:
-        required: true
+        required: false
         description: "Lista de aprobadores separados por comas (usuario1,usuario2)"
 
 permissions:
