@@ -1,0 +1,40 @@
+name: Manual Approval
+
+on:
+  workflow_call:
+    inputs:
+      environment_name:
+        required: true
+        type: string
+        description: "El nombre del entorno para el que se solicita aprobación"
+      issue_title:
+        required: false
+        type: string
+        default: "Solicitud de aprobación para despliegue"
+        description: "Título del issue de aprobación"
+      issue_body:
+        required: false
+        type: string
+        default: "Por favor revisa y aprueba este despliegue"
+        description: "Cuerpo del issue de aprobación"
+    secrets:
+      approvers:
+        required: true
+        description: "Lista de aprobadores separados por comas (usuario1,usuario2)"
+
+permissions:
+  issues: write
+
+jobs:
+  wait-for-approval:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Manual Approval
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ secrets.GITHUB_TOKEN }}
+          approvers: ${{ secrets.approvers }}
+          minimum-approvals: 1
+          issue-title: "${{ inputs.issue_title }} - ${{ inputs.environment_name }}"
+          issue-body: "${{ inputs.issue_body }} en entorno ${{ inputs.environment_name }}"
+          exclude-workflow-initiator-as-approver: false
